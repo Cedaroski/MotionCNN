@@ -20,13 +20,15 @@ class MotionCNNDataloader(object):
 
         self.left_image_batch  = None
         self.right_image_batch = None
+        self.right_image_batch = None
 
         input_queue = tf.train.string_input_producer([filenames_file], shuffle=False)
+
         line_reader = tf.TextLineReader()
         _, line = line_reader.read(input_queue)
 
         split_line = tf.string_split([line]).values
-
+        self.input_queue = split_line
         # we load only one image for test, except if we trained a stereo model
         if mode == 'test' and not self.params.do_stereo:
             left_image_path  = tf.string_join([self.data_path, split_line[0]])
@@ -117,13 +119,23 @@ if __name__ == '__main__':
     params = monodepth_parameters(
         height=256,
         width=512,
-        batch_size=8,
-        num_threads=8,
+        batch_size=1,
+        num_threads=1,
         do_stereo='store_true')
     dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/2011_09_26/', '/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt', params, 'kitti','train')
     left = dataloader.left_image_batch
+    single = dataloader.read_image('/home/user/Data/Nullmax_0231/JPEGImages/2018-06-28-10-32/nm_000001_00000021_08/frame_vc0_764_rcb.jpg')
     config = tf.ConfigProto(allow_soft_placement=True)
     sess = tf.Session(config=config)
     sess.run(tf.global_variables_initializer())
-    sess.run(left)
+
+    input_queue = tf.train.string_input_producer(['/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt'], shuffle=False)
+
+    line_reader = tf.TextLineReader()
+    _, line = line_reader.read(input_queue)
+
+    split_line = tf.string_split([line]).values
+    with sess:
+        img, imgb= sess.run([single,line])
+        print(img)
     print('data load done')
