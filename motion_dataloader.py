@@ -1,13 +1,5 @@
-# Copyright UCL Business plc 2017. Patent Pending. All rights reserved. 
-#
-# The MonoDepth Software is licensed under the terms of the UCLB ACP-A licence
-# which allows for non-commercial use only, the full terms of which are made
-# available in the LICENSE file.
-#
-# For any other use of the software not covered by the UCLB ACP-A Licence, 
-# please contact info@uclb.com
 
-"""Monodepth data loader.
+"""MotionCNN data loader.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -17,8 +9,8 @@ import tensorflow as tf
 def string_length_tf(t):
   return tf.py_func(len, [t], [tf.int64])
 
-class MonodepthDataloader(object):
-    """monodepth dataloader"""
+class MotionCNNDataloader(object):
+    """MotionCNN dataloader"""
 
     def __init__(self, data_path, filenames_file, params, dataset, mode):
         self.data_path = data_path
@@ -114,3 +106,24 @@ class MonodepthDataloader(object):
         image  = tf.image.resize_images(image,  [self.params.height, self.params.width], tf.image.ResizeMethod.AREA)
 
         return image
+
+if __name__ == '__main__':
+    from collections import namedtuple
+    monodepth_parameters = namedtuple('parameters', 
+                        'height, width, '
+                        'batch_size, '
+                        'num_threads, '
+                        'do_stereo')
+    params = monodepth_parameters(
+        height=256,
+        width=512,
+        batch_size=8,
+        num_threads=8,
+        do_stereo='store_true')
+    dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/2011_09_26/', '/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt', params, 'kitti','train')
+    left = dataloader.left_image_batch
+    config = tf.ConfigProto(allow_soft_placement=True)
+    sess = tf.Session(config=config)
+    sess.run(tf.global_variables_initializer())
+    sess.run(left)
+    print('data load done')
