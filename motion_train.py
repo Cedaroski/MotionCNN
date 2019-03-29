@@ -20,7 +20,7 @@ import time
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
-from monodepth_model import *
+from motion_model import *
 from motion_dataloader import *
 from average_gradients import *
 
@@ -107,9 +107,12 @@ def train(params):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:%d' % i):
 
-                    model = MonodepthModel(params, args.mode, left_splits[i], right_splits[i], reuse_variables, i)
+                    model = MotionCNNModel(params, args.mode, left_splits[i], right_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
+
+                    egomotion = model.egomotion
+
                     tower_losses.append(loss)
 
                     reuse_variables = True
@@ -161,7 +164,8 @@ def train(params):
         start_time = time.time()
         for step in range(start_step, num_total_steps):
             before_op_time = time.time()
-            _, loss_value = sess.run([apply_gradient_op, total_loss])
+            _, loss_value, ego_motion = sess.run([apply_gradient_op, total_loss, egomotion])
+            print(ego_motion)
             duration = time.time() - before_op_time
             if step and step % 100 == 0:
                 examples_per_sec = params.batch_size / duration
@@ -183,7 +187,7 @@ def test(params):
     left  = dataloader.left_image_batch
     right = dataloader.right_image_batch
 
-    model = MonodepthModel(params, args.mode, left, right)
+    model = MotionCNNModel(params, args.mode, left, right)
 
     # SESSION
     config = tf.ConfigProto(allow_soft_placement=True)

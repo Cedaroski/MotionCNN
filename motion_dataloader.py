@@ -109,6 +109,9 @@ class MotionCNNDataloader(object):
 
         return image
 
+    def read_label(self, label_index):
+        return label_index
+
 if __name__ == '__main__':
     from collections import namedtuple
     monodepth_parameters = namedtuple('parameters', 

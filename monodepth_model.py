@@ -170,6 +170,13 @@ class MonodepthModel(object):
         conv = slim.conv2d_transpose(p_x, num_out_layers, kernel_size, scale, 'SAME')
         return conv[:,3:-1,3:-1,:]
 
+
+
+
+
+
+
+
     def build_vgg(self):
         #set convenience functions
         conv = self.conv
