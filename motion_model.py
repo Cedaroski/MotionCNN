@@ -23,7 +23,7 @@ monodepth_parameters = namedtuple('parameters',
 
 
 class MotionCNNModel(object):
-    """monodepth model"""
+    """MotionCNNModel"""
 
     def __init__(self, params, mode, left, right, pose_label, reuse_variables=None, model_index=0):
         self.params = params
@@ -103,8 +103,8 @@ class MotionCNNModel(object):
         image_gradients_x = [self.gradient_x(img) for img in pyramid]
         image_gradients_y = [self.gradient_y(img) for img in pyramid]
 
-        weights_x = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keep_dims=True)) for g in image_gradients_x]
-        weights_y = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keep_dims=True)) for g in image_gradients_y]
+        weights_x = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keepdims=True)) for g in image_gradients_x]
+        weights_y = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keepdims=True)) for g in image_gradients_y]
 
         smoothness_x = [disp_gradients_x[i] * weights_x[i] for i in range(4)]
         smoothness_y = [disp_gradients_y[i] * weights_y[i] for i in range(4)]
@@ -160,7 +160,8 @@ class MotionCNNModel(object):
 
     def pose_net(self):
         with tf.variable_scope('posenet'):
-            cnv1 = slim.conv2d(self.model_input, 16, [7, 7], stride=2, scope='cnv1')
+            '''
+                        cnv1 = slim.conv2d(self.model_input, 16, [7, 7], stride=2, scope='cnv1')
             cnv2 = slim.conv2d(cnv1, 32, [5, 5], stride=2, scope='cnv2')
             cnv3 = slim.conv2d(cnv2, 64, [3, 3], stride=2, scope='cnv3')
             cnv4 = slim.conv2d(cnv3, 128, [3, 3], stride=2, scope='cnv4')
@@ -169,8 +170,16 @@ class MotionCNNModel(object):
             cnv7 = slim.conv2d(cnv6, 256, [3, 3], stride=2, scope='cnv7')
             pose_pred = slim.conv2d(cnv7, 6 * 1, [1, 1], scope='pred',
                                     stride=1, normalizer_fn=None, activation_fn=None)
-            pose_avg = tf.reduce_mean(pose_pred, [1, 2])
-            self.egomotion = pose_avg
+            '''
+            conv1 = self.conv_block(self.model_input, 32, 7)  # H/2  #(input, num_out_layers, kernel_size):
+            conv2 = self.conv_block(conv1, 64, 5)  # H/4
+            conv3 = self.conv_block(conv2, 128, 3)  # H/8
+            conv4 = self.conv_block(conv3, 256, 3)  # H/16
+            conv5 = self.conv_block(conv4, 512, 3)  # H/32
+            conv6 = self.conv_block(conv5, 512, 3)  # H/64
+            pose_pred = self.conv_block(conv6, 5, 1)  # H/128
+            self.pose_avg = tf.reduce_mean(pose_pred, [1, 2])
+            #self.egomotion = pose_avg
 
     def build_vgg(self):
         # set convenience functions
@@ -301,7 +310,8 @@ class MotionCNNModel(object):
                     self.model_input = tf.concat([self.left, self.right], 3)
                 else:
                     self.model_input = self.left
-
+                #build pose
+                self.pose_net()
                 # build model
                 if self.params.encoder == 'vgg':
                     self.build_vgg()
@@ -309,6 +319,8 @@ class MotionCNNModel(object):
                     self.build_resnet50()
                 else:
                     return None
+
+
 
     def build_outputs(self):
         # STORE DISPARITIES
@@ -378,6 +390,9 @@ class MotionCNNModel(object):
             self.lr_right_loss = [tf.reduce_mean(tf.abs(self.left_to_right_disp[i] - self.disp_right_est[i])) for i in
                                   range(4)]
             self.lr_loss = tf.add_n(self.lr_left_loss + self.lr_right_loss)
+
+            #Pose LOSS
+            #self.pose_loss = tf.reduce_mean(self.pose_avg-self.pose_label)
 
             # TOTAL LOSS
             self.total_loss = self.image_loss + self.params.disp_gradient_loss_weight * self.disp_gradient_loss + self.params.lr_loss_weight * self.lr_loss

@@ -115,6 +115,8 @@ def train(params):
 
                     egomotion = model.egomotion
 
+
+
                     tower_losses.append(loss)
 
                     reuse_variables = True
@@ -128,6 +130,10 @@ def train(params):
         apply_gradient_op = opt_step.apply_gradients(grads, global_step=global_step)
 
         total_loss = tf.reduce_mean(tower_losses)
+
+
+
+
 
         tf.summary.scalar('learning_rate', learning_rate, ['model_0'])
         tf.summary.scalar('total_loss', total_loss, ['model_0'])

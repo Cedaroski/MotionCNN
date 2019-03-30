@@ -30,6 +30,8 @@ class MotionCNNDataloader(object):
         _, line_pose = line_pose_reader.read(input_pose_queue)
 
         split_line = tf.string_split([line]).values
+        split_line_pose =(tf.string_split([line_pose]).values)
+        split_line_pose_reshape= tf.string_to_number(tf.reshape(split_line_pose,([6])))
         # we load only one image for test, except if we trained a stereo model
         if mode == 'test' and not self.params.do_stereo:
             left_image_path  = tf.string_join([self.data_path, split_line[0]])
@@ -55,7 +57,7 @@ class MotionCNNDataloader(object):
             # capacity = min_after_dequeue + (num_threads + a small safety margin) * batch_size
             min_after_dequeue = 2048
             capacity = min_after_dequeue + 4 * params.batch_size
-            self.left_image_batch, self.right_image_batch, self.pose_label_batch = tf.train.shuffle_batch([left_image, right_image, line_pose],
+            self.left_image_batch, self.right_image_batch, self.pose_label_batch = tf.train.shuffle_batch([left_image, right_image, split_line_pose_reshape],
                         params.batch_size, capacity, min_after_dequeue, params.num_threads)
 
         elif mode == 'test':
