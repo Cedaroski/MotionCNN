@@ -25,11 +25,12 @@ monodepth_parameters = namedtuple('parameters',
 class MotionCNNModel(object):
     """monodepth model"""
 
-    def __init__(self, params, mode, left, right, reuse_variables=None, model_index=0):
+    def __init__(self, params, mode, left, right, pose_label, reuse_variables=None, model_index=0):
         self.params = params
         self.mode = mode
         self.left = left
         self.right = right
+        self.pose_label =pose_label
         self.model_collection = ['model_' + str(model_index)]
 
         self.reuse_variables = reuse_variables
@@ -339,7 +340,8 @@ class MotionCNNModel(object):
         # EGO MOTION
         if self.mode != 'egomotion_train':
             with tf.variable_scope('egomotion'):
-                self.egomotion = tf.eye(1, 6)
+
+                self.egomotion = self.pose_label
 
     def build_losses(self):
         with tf.variable_scope('losses', reuse=self.reuse_variables):

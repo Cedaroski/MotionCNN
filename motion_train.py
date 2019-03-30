@@ -50,6 +50,7 @@ parser.add_argument('--log_directory',             type=str,   help='directory t
 parser.add_argument('--checkpoint_path',           type=str,   help='path to a specific checkpoint to load', default='')
 parser.add_argument('--retrain',                               help='if used with checkpoint_path, will restart training from step zero', action='store_true')
 parser.add_argument('--full_summary',                          help='if set, will keep more data for each summary. Warning: the file can become very large', action='store_true')
+parser.add_argument('--pose_file',                 type=str,   help='input pose label', default='')
 
 args = parser.parse_args()
 
@@ -92,14 +93,15 @@ def train(params):
         print("total number of samples: {}".format(num_training_samples))
         print("total number of steps: {}".format(num_total_steps))
 
-        dataloader = MotionCNNDataloader(args.data_path, args.filenames_file, params, args.dataset, args.mode)
+        dataloader = MotionCNNDataloader(args.data_path, args.filenames_file, args.pose_file, params, args.dataset, args.mode)
         left  = dataloader.left_image_batch
         right = dataloader.right_image_batch
+        pose_label =dataloader.pose_label_batch
 
         # split for each gpu
         left_splits  = tf.split(left,  args.num_gpus, 0)
         right_splits = tf.split(right, args.num_gpus, 0)
-
+        pose_label_splits = tf.split(pose_label, args.num_gpus,0)
         tower_grads  = []
         tower_losses = []
         reuse_variables = None
@@ -107,7 +109,7 @@ def train(params):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:%d' % i):
 
-                    model = MotionCNNModel(params, args.mode, left_splits[i], right_splits[i], reuse_variables, i)
+                    model = MotionCNNModel(params, args.mode, left_splits[i], right_splits[i], pose_label_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
 

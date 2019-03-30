@@ -12,7 +12,7 @@ def string_length_tf(t):
 class MotionCNNDataloader(object):
     """MotionCNN dataloader"""
 
-    def __init__(self, data_path, filenames_file, params, dataset, mode):
+    def __init__(self, data_path, filenames_file, pose_file, params, dataset, mode):
         self.data_path = data_path
         self.params = params
         self.dataset = dataset
@@ -23,12 +23,13 @@ class MotionCNNDataloader(object):
         self.right_image_batch = None
 
         input_queue = tf.train.string_input_producer([filenames_file], shuffle=False)
-
+        input_pose_queue = tf.train.string_input_producer([pose_file], shuffle=False)
+        line_pose_reader = tf.TextLineReader()
         line_reader = tf.TextLineReader()
         _, line = line_reader.read(input_queue)
+        _, line_pose = line_pose_reader.read(input_pose_queue)
 
         split_line = tf.string_split([line]).values
-        self.input_queue = split_line
         # we load only one image for test, except if we trained a stereo model
         if mode == 'test' and not self.params.do_stereo:
             left_image_path  = tf.string_join([self.data_path, split_line[0]])
@@ -41,21 +42,20 @@ class MotionCNNDataloader(object):
 
         if mode == 'train':
             # randomly flip images
-            do_flip = tf.random_uniform([], 0, 1)
-            left_image  = tf.cond(do_flip > 0.5, lambda: tf.image.flip_left_right(right_image_o), lambda: left_image_o)
-            right_image = tf.cond(do_flip > 0.5, lambda: tf.image.flip_left_right(left_image_o),  lambda: right_image_o)
+            left_image  = left_image_o
+            right_image = right_image_o
 
             # randomly augment images
-            do_augment  = tf.random_uniform([], 0, 1)
+            do_augment = tf.random_uniform([], 0, 1)
             left_image, right_image = tf.cond(do_augment > 0.5, lambda: self.augment_image_pair(left_image, right_image), lambda: (left_image, right_image))
 
-            left_image.set_shape( [None, None, 3])
+            left_image.set_shape([None, None, 3])
             right_image.set_shape([None, None, 3])
 
             # capacity = min_after_dequeue + (num_threads + a small safety margin) * batch_size
             min_after_dequeue = 2048
             capacity = min_after_dequeue + 4 * params.batch_size
-            self.left_image_batch, self.right_image_batch = tf.train.shuffle_batch([left_image, right_image],
+            self.left_image_batch, self.right_image_batch, self.pose_label_batch = tf.train.shuffle_batch([left_image, right_image, line_pose],
                         params.batch_size, capacity, min_after_dequeue, params.num_threads)
 
         elif mode == 'test':
@@ -125,7 +125,7 @@ if __name__ == '__main__':
         batch_size=1,
         num_threads=1,
         do_stereo='store_true')
-    dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/', '/home/cedaroski/Project/MotionCNN/utils/filenames/kitti_test_files_my.txt', params, 'kitti','train')
+    dataloader = MotionCNNDataloader('/home/lab1501/data/lab_1501/2019-03-19/2019-03-19_09-31-45', '/home/lab1501/PycharmProjects/ZED_examples/svo_recording/utils/2019-03-19_09-31-45.txt', params, 'kitti','train')
     left = dataloader.left_image_batch
     '''
     
@@ -138,12 +138,11 @@ if __name__ == '__main__':
     split_line = tf.string_split([line]).values
     
     '''
-    single = dataloader.read_image('/home/cedaroski/RoboRTS/images/robot.jpg')
 
     config = tf.ConfigProto(allow_soft_placement=True)
     sess = tf.Session(config=config)
     sess.run(tf.global_variables_initializer())
     for step in range(1):
-        img= sess.run([single])
+        img= sess.run([])
         print(img)
     print('data load done')

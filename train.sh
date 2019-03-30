@@ -1,1 +1,1 @@
-python motion_train.py --mode train --data_path /home/user/Data/2019-03-12/ --filenames_file /home/user/Data/2019-03-12/nm_binocular_train.txt --log_directory tmp/nullmaxtrain --model_name train2layer --num_epochs 100 --batch_size 1
+python3 motion_train.py --mode train --pose_file /home/lab1501/PycharmProjects/MotionCNN/Data/posename.txt --data_path /home/lab1501/data/2019-03-13_13-50-33/ --filenames_file /home/lab1501/PycharmProjects/ZED_examples/svo_recording/utils/2019-03-13_13-50-33.txt --log_directory tmp/mytrainlab --model_name other  --retrain --num_epochs 500
