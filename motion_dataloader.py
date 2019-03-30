@@ -125,10 +125,10 @@ if __name__ == '__main__':
         batch_size=1,
         num_threads=1,
         do_stereo='store_true')
-    dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/', '/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt', params, 'kitti','train')
+    dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/', '/home/cedaroski/Project/MotionCNN/utils/filenames/kitti_test_files_my.txt', params, 'kitti','train')
     left = dataloader.left_image_batch
-    single = dataloader.read_image('/home/user/Data/Nullmax_0231/JPEGImages/2018-06-28-10-32/nm_000001_00000021_08/frame_vc0_764_rcb.jpg')
-
+    '''
+    
 
     input_queue = tf.train.string_input_producer(['/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt'], shuffle=False)
 
@@ -136,10 +136,14 @@ if __name__ == '__main__':
     _, line = line_reader.read(input_queue)
 
     split_line = tf.string_split([line]).values
+    
+    '''
+    single = dataloader.read_image('/home/cedaroski/RoboRTS/images/robot.jpg')
+
     config = tf.ConfigProto(allow_soft_placement=True)
     sess = tf.Session(config=config)
     sess.run(tf.global_variables_initializer())
     for step in range(1):
-        img, imgb= sess.run([single,left])
+        img= sess.run([single])
         print(img)
     print('data load done')

@@ -1,110 +1,155 @@
-# Copyright UCL Business plc 2017. Patent Pending. All rights reserved.
-#
-# The MonoDepth Software is licensed under the terms of the UCLB ACP-A licence
-# which allows for non-commercial use only, the full terms of which are made
-# available in the LICENSE file.
-#
-# For any other use of the software not covered by the UCLB ACP-A Licence,
-# please contact info@uclb.com
+"""MotionCNN data loader.
+"""
 
 from __future__ import absolute_import, division, print_function
-
-# only keep warnings and errors
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL']='0'
-
-import numpy as np
-import argparse
-import re
-import time
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
-import scipy.misc
-import matplotlib.pyplot as plt
-
-from monodepth_model import *
-from monodepth_dataloader import *
-from average_gradients import *
-
-parser = argparse.ArgumentParser(description='Monodepth TensorFlow implementation.')
-
-parser.add_argument('--encoder',          type=str,   help='type of encoder, vgg or resnet50', default='vgg')
-parser.add_argument('--image_path',       type=str,   help='path to the image', required=True)
-parser.add_argument('--checkpoint_path',  type=str,   help='path to a specific checkpoint to load', required=True)
-parser.add_argument('--input_height',     type=int,   help='input height', default=256)
-parser.add_argument('--input_width',      type=int,   help='input width', default=512)
-
-args = parser.parse_args()
-
-def post_process_disparity(disp):
-    _, h, w = disp.shape
-    l_disp = disp[0,:,:]
-    r_disp = np.fliplr(disp[1,:,:])
-    m_disp = 0.5 * (l_disp + r_disp)
-    l, _ = np.meshgrid(np.linspace(0, 1, w), np.linspace(0, 1, h))
-    l_mask = 1.0 - np.clip(20 * (l - 0.05), 0, 1)
-    r_mask = np.fliplr(l_mask)
-    return r_mask * l_disp + l_mask * r_disp + (1.0 - l_mask - r_mask) * m_disp
-
-def test_simple(params):
-    """Test function."""
-
-    left  = tf.placeholder(tf.float32, [2, args.input_height, args.input_width, 3])
-    model = MonodepthModel(params, "test", left, None)
 
 
+def string_length_tf(t):
+    return tf.py_func(len, [t], [tf.int64])
 
-    # SESSION
-    config = tf.ConfigProto(allow_soft_placement=True)
-    sess = tf.Session(config=config)
 
-    # SAVER
-    train_saver = tf.train.Saver()
+class MotionCNNDataloader(object):
+    """MotionCNN dataloader"""
 
-    # INIT
-    sess.run(tf.global_variables_initializer())
-    sess.run(tf.local_variables_initializer())
-    coordinator = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
+    def __init__(self, data_path, filenames_file, params, dataset, mode):
+        self.data_path = data_path
+        self.params = params
+        self.dataset = dataset
+        self.mode = mode
 
-    # RESTORE
-    restore_path = args.checkpoint_path.split(".")[0]
-    train_saver.restore(sess, restore_path)
-    input_image = scipy.misc.imread(args.image_path, mode="RGB")
-    original_height, original_width, num_channels = input_image.shape
-    input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width], interp='lanczos')
-    input_image = input_image.astype(np.float32) / 255
-    input_images = np.stack((input_image, np.fliplr(input_image)), 0)
-    disp = sess.run(model.disp_left_est[0], feed_dict={left: input_images})
-    disp_pp = post_process_disparity(disp.squeeze()).astype(np.float32)
+        self.left_image_batch = None
+        self.right_image_batch = None
+        self.right_image_batch = None
 
-    output_directory = os.path.dirname(args.image_path)
-    output_name = os.path.splitext(os.path.basename(args.image_path))[0]
+        input_queue = tf.train.string_input_producer([filenames_file], shuffle=False)
 
-    np.save(os.path.join(output_directory, "./disp/{}_disp.npy".format(output_name)), disp_pp)
-    disp_to_img = scipy.misc.imresize(disp_pp.squeeze(), [original_height, original_width])
-    plt.imsave(os.path.join(output_directory, "./disp/{}_disp.png".format(output_name)), disp_to_img, cmap='gray')
+        line_reader = tf.TextLineReader()
+        _, line = line_reader.read(input_queue)
 
-    #print('done!')
+        split_line = tf.string_split([line]).values
+        self.input_queue = split_line
+        # we load only one image for test, except if we trained a stereo model
+        if mode == 'test' and not self.params.do_stereo:
+            left_image_path = tf.string_join([self.data_path, split_line[0]])
+            left_image_o = self.read_image(left_image_path)
+        else:
+            left_image_path = tf.string_join([self.data_path, split_line[0]])
+            right_image_path = tf.string_join([self.data_path, split_line[1]])
+            left_image_o = self.read_image(left_image_path)
+            right_image_o = self.read_image(right_image_path)
 
-def main(_):
+        if mode == 'train':
+            # randomly flip images
+            do_flip = tf.random_uniform([], 0, 1)
+            left_image = tf.cond(do_flip > 0.5, lambda: tf.image.flip_left_right(right_image_o), lambda: left_image_o)
+            right_image = tf.cond(do_flip > 0.5, lambda: tf.image.flip_left_right(left_image_o), lambda: right_image_o)
 
-    params = monodepth_parameters(
-        encoder=args.encoder,
-        height=args.input_height,
-        width=args.input_width,
-        batch_size=2,
-        num_threads=1,
-        num_epochs=1,
-        do_stereo=False,
-        wrap_mode="border",
-        use_deconv=False,
-        alpha_image_loss=0,
-        disp_gradient_loss_weight=0,
-        lr_loss_weight=0,
-        full_summary=False)
+            # randomly augment images
+            do_augment = tf.random_uniform([], 0, 1)
+            left_image, right_image = tf.cond(do_augment > 0.5,
+                                              lambda: self.augment_image_pair(left_image, right_image),
+                                              lambda: (left_image, right_image))
 
-    test_simple(params)
+            left_image.set_shape([None, None, 3])
+            right_image.set_shape([None, None, 3])
+
+            # capacity = min_after_dequeue + (num_threads + a small safety margin) * batch_size
+            min_after_dequeue = 2048
+            capacity = min_after_dequeue + 4 * params.batch_size
+            self.left_image_batch, self.right_image_batch = tf.train.shuffle_batch([left_image, right_image],
+                                                                                   params.batch_size, capacity,
+                                                                                   min_after_dequeue,
+                                                                                   params.num_threads)
+
+        elif mode == 'test':
+            self.left_image_batch = tf.stack([left_image_o, tf.image.flip_left_right(left_image_o)], 0)
+            self.left_image_batch.set_shape([2, None, None, 3])
+
+            if self.params.do_stereo:
+                self.right_image_batch = tf.stack([right_image_o, tf.image.flip_left_right(right_image_o)], 0)
+                self.right_image_batch.set_shape([2, None, None, 3])
+
+    def augment_image_pair(self, left_image, right_image):
+        # randomly shift gamma
+        random_gamma = tf.random_uniform([], 0.8, 1.2)
+        left_image_aug = left_image ** random_gamma
+        right_image_aug = right_image ** random_gamma
+
+        # randomly shift brightness
+        random_brightness = tf.random_uniform([], 0.5, 2.0)
+        left_image_aug = left_image_aug * random_brightness
+        right_image_aug = right_image_aug * random_brightness
+
+        # randomly shift color
+        random_colors = tf.random_uniform([3], 0.8, 1.2)
+        white = tf.ones([tf.shape(left_image)[0], tf.shape(left_image)[1]])
+        color_image = tf.stack([white * random_colors[i] for i in range(3)], axis=2)
+        left_image_aug *= color_image
+        right_image_aug *= color_image
+
+        # saturate
+        left_image_aug = tf.clip_by_value(left_image_aug, 0, 1)
+        right_image_aug = tf.clip_by_value(right_image_aug, 0, 1)
+
+        return left_image_aug, right_image_aug
+
+    def read_image(self, image_path):
+        # tf.decode_image does not return the image size, this is an ugly workaround to handle both jpeg and png
+        path_length = string_length_tf(image_path)[0]
+        file_extension = tf.substr(image_path, path_length - 3, 3)
+        file_cond = tf.equal(file_extension, 'jpg')
+
+        image = tf.cond(file_cond, lambda: tf.image.decode_jpeg(tf.read_file(image_path)),
+                        lambda: tf.image.decode_png(tf.read_file(image_path)))
+
+        # if the dataset is cityscapes, we crop the last fifth to remove the car hood
+        if self.dataset == 'cityscapes':
+            o_height = tf.shape(image)[0]
+            crop_height = (o_height * 4) // 5
+            image = image[:crop_height, :, :]
+
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.image.resize_images(image, [self.params.height, self.params.width], tf.image.ResizeMethod.AREA)
+
+        return image
+
+    def read_label(self, label_index):
+        return label_index
+
 
 if __name__ == '__main__':
-    tf.app.run()
+    from collections import namedtuple
+
+    monodepth_parameters = namedtuple('parameters',
+                                      'height, width, '
+                                      'batch_size, '
+                                      'num_threads, '
+                                      'do_stereo')
+    params = monodepth_parameters(
+        height=256,
+        width=512,
+        batch_size=1,
+        num_threads=1,
+        do_stereo='store_true')
+    dataloader = MotionCNNDataloader('/home/user/PycharmProjects/monodepth/data/KITTI/',
+                                     '/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt',
+                                     params, 'kitti', 'train')
+    left = dataloader.left_image_batch
+    single = dataloader.read_image(
+        '/home/user/Data/Nullmax_0231/JPEGImages/2018-06-28-10-32/nm_000001_00000021_08/frame_vc0_764_rcb.jpg')
+
+    input_queue = tf.train.string_input_producer(
+        ['/home/user/PycharmProjects/monodepth/utils/filenames/kitti_test_files_my.txt'], shuffle=False)
+
+    line_reader = tf.TextLineReader()
+    _, line = line_reader.read(input_queue)
+
+    split_line = tf.string_split([line]).values
+    config = tf.ConfigProto(allow_soft_placement=True)
+    sess = tf.Session(config=config)
+    sess.run(tf.global_variables_initializer())
+    for step in range(1):
+        img, imgb = sess.run([single, left])
+        print(img)
+    print('data load done')
