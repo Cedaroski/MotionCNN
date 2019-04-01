@@ -115,8 +115,7 @@ def train(params):
 
                     egomotion = model.egomotion
 
-
-
+                    pose_loss=model.pose_loss
                     tower_losses.append(loss)
 
                     reuse_variables = True
@@ -125,15 +124,11 @@ def train(params):
 
                     tower_grads.append(grads)
 
-        grads = average_gradients(tower_grads)
+        #grads = average_gradients(tower_grads)
 
         apply_gradient_op = opt_step.apply_gradients(grads, global_step=global_step)
 
         total_loss = tf.reduce_mean(tower_losses)
-
-
-
-
 
         tf.summary.scalar('learning_rate', learning_rate, ['model_0'])
         tf.summary.scalar('total_loss', total_loss, ['model_0'])
@@ -172,15 +167,14 @@ def train(params):
         start_time = time.time()
         for step in range(start_step, num_total_steps):
             before_op_time = time.time()
-            _, loss_value, ego_motion = sess.run([apply_gradient_op, total_loss, egomotion])
-            print(ego_motion)
+            _, loss_value, pose_loss_out = sess.run([apply_gradient_op, total_loss, pose_loss])
             duration = time.time() - before_op_time
             if step and step % 100 == 0:
                 examples_per_sec = params.batch_size / duration
                 time_sofar = (time.time() - start_time) / 3600
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
-                print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
-                print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
+                print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} |pose_loss_out: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
+                print(print_string.format(step, examples_per_sec, loss_value,pose_loss_out ,time_sofar, training_time_left))
                 summary_str = sess.run(summary_op)
                 summary_writer.add_summary(summary_str, global_step=step)
             if step and step % 10000 == 0:

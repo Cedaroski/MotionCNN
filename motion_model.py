@@ -160,16 +160,17 @@ class MotionCNNModel(object):
 
     def pose_net(self):
         with tf.variable_scope('posenet'):
-            '''
-                        cnv1 = slim.conv2d(self.model_input, 16, [7, 7], stride=2, scope='cnv1')
+
+            cnv1 = slim.conv2d(self.left, 16, [7, 7], stride=2, scope='cnv1')
             cnv2 = slim.conv2d(cnv1, 32, [5, 5], stride=2, scope='cnv2')
             cnv3 = slim.conv2d(cnv2, 64, [3, 3], stride=2, scope='cnv3')
             cnv4 = slim.conv2d(cnv3, 128, [3, 3], stride=2, scope='cnv4')
             cnv5 = slim.conv2d(cnv4, 256, [3, 3], stride=2, scope='cnv5')
             cnv6 = slim.conv2d(cnv5, 256, [3, 3], stride=2, scope='cnv6')
             cnv7 = slim.conv2d(cnv6, 256, [3, 3], stride=2, scope='cnv7')
-            pose_pred = slim.conv2d(cnv7, 6 * 1, [1, 1], scope='pred',
+            self.pose_pred = slim.conv2d(cnv7, 6 * 1, [1, 1], scope='pred',
                                     stride=1, normalizer_fn=None, activation_fn=None)
+
             '''
             conv1 = self.conv_block(self.model_input, 32, 7)  # H/2  #(input, num_out_layers, kernel_size):
             conv2 = self.conv_block(conv1, 64, 5)  # H/4
@@ -180,6 +181,7 @@ class MotionCNNModel(object):
             pose_pred = self.conv_block(conv6, 5, 1)  # H/128
             self.pose_avg = tf.reduce_mean(pose_pred, [1, 2])
             #self.egomotion = pose_avg
+            '''
 
     def build_vgg(self):
         # set convenience functions
@@ -197,6 +199,7 @@ class MotionCNNModel(object):
             conv5 = self.conv_block(conv4, 512, 3)  # H/32
             conv6 = self.conv_block(conv5, 512, 3)  # H/64
             conv7 = self.conv_block(conv6, 512, 3)  # H/128
+
 
         with tf.variable_scope('skips'):
             skip1 = conv1
@@ -312,8 +315,10 @@ class MotionCNNModel(object):
                     self.model_input = self.left
                 #build pose
                 self.pose_net()
+
                 # build model
                 if self.params.encoder == 'vgg':
+
                     self.build_vgg()
                 elif self.params.encoder == 'resnet50':
                     self.build_resnet50()
@@ -392,10 +397,10 @@ class MotionCNNModel(object):
             self.lr_loss = tf.add_n(self.lr_left_loss + self.lr_right_loss)
 
             #Pose LOSS
-            #self.pose_loss = tf.reduce_mean(self.pose_avg-self.pose_label)
+            self.pose_loss = tf.reduce_mean(self.pose_pred-self.pose_label)
 
             # TOTAL LOSS
-            self.total_loss = self.image_loss + self.params.disp_gradient_loss_weight * self.disp_gradient_loss + self.params.lr_loss_weight * self.lr_loss
+            self.total_loss = self.pose_loss + self.image_loss + self.params.disp_gradient_loss_weight * self.disp_gradient_loss + self.params.lr_loss_weight * self.lr_loss
 
     def build_summaries(self):
         # SUMMARIES
